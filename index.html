@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>Ollama Chat</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Ollama Chat">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<style>
+  :root{
+    --bg: #ffffff;
+    --panel: #f5f5f5;
+    --panel-2: #ececec;
+    --border: #d9d9d9;
+    --text: #111111;
+    --muted: #6b6b6b;
+    --accent: #000000;
+    --accent-dim: #2b2b2b;
+    --user-bubble: #111111;
+    --user-text: #ffffff;
+    --mono: 'JetBrains Mono', 'Courier New', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{height:100%;}
+  body{
+    background:var(--bg); color:var(--text); font-family:var(--sans);
+    height:100vh; height:100dvh; display:flex; overflow:hidden;
+  }
+  /* Sidebar */
+  #sidebar{
+    width:270px; background:var(--panel); border-right:1px solid var(--border);
+    display:flex; flex-direction:column; flex-shrink:0;
+  }
+  #sidebar-header{
+    padding:16px; border-bottom:1px solid var(--border);
+  }
+  #brand{
+    font-family:var(--mono); font-size:13px; color:var(--accent); letter-spacing:1px;
+    text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:8px;
+  }
+  #brand .dot{width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent);}
+  #new-chat{
+    width:100%; padding:10px; background:var(--accent-dim); color:#ffffff; border:none;
+    border-radius:8px; cursor:pointer; font-size:14px; font-weight:600; font-family:var(--sans);
+  }
+  #new-chat:hover{background:#000000;}
+  #model-picker{
+    padding:12px 16px; border-bottom:1px solid var(--border);
+  }
+  #model-picker label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; font-family:var(--mono);}
+  #model-select{
+    width:100%; margin-top:6px; padding:8px; background:var(--panel-2); color:var(--text);
+    border:1px solid var(--border); border-radius:6px; font-size:13px;
+  }
+  #conversations{
+    flex:1; overflow-y:auto; padding:8px;
+  }
+  #provider-toggle{
+    display:flex; gap:6px; margin-bottom:10px;
+  }
+  .provider-btn{
+    flex:1; padding:7px 4px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
+    cursor:pointer; font-size:12px; color:var(--muted); font-family:var(--sans); text-align:center;
+  }
+  .provider-btn.active{background:var(--accent-dim); color:#ffffff; border-color:var(--accent-dim);}
+  #gemini-key-box{margin-top:8px; display:none;}
+  #gemini-key-box input{
+    width:100%; padding:7px 8px; background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    border-radius:6px; font-size:12px; font-family:var(--mono);
+  }
+  #gemini-key-box .hint{font-size:10px; color:var(--muted); margin-top:5px; line-height:1.4; display:block;}
+  .conv-item{
+    padding:10px 12px; border-radius:8px; cursor:pointer; font-size:13px; color:var(--muted);
+    margin-bottom:2px; display:flex; align-items:center; justify-content:space-between; gap:6px;
+    position:relative;
+  }
+  .conv-item .conv-title{
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1;
+  }
+  .conv-rename-input{
+    flex:1; font-size:13px; font-family:var(--sans); color:var(--text); background:#ffffff;
+    border:1px solid var(--accent-dim); border-radius:4px; padding:2px 6px;
+  }
+  .conv-menu-btn{
+    opacity:0; color:var(--muted); font-size:15px; padding:2px 6px; border-radius:4px; flex-shrink:0;
+    line-height:1;
+  }
+  .conv-item:hover .conv-menu-btn{opacity:1;}
+  .conv-menu-btn:hover{background:var(--panel); color:var(--text);}
+  .conv-menu-dropdown{
+    position:absolute; top:100%; right:8px; background:#ffffff; border:1px solid var(--border);
+    border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.12); z-index:20; overflow:hidden; min-width:150px;
+  }
+  .conv-menu-dropdown button{
+    display:flex; align-items:center; gap:8px; width:100%; padding:9px 12px; background:none; border:none;
+    text-align:left; font-size:13px; color:var(--text); cursor:pointer; font-family:var(--sans);
+  }
+  .conv-menu-dropdown button:hover{background:var(--panel);}
+  .conv-menu-dropdown button.danger{color:#c0392b;}
+  .conv-item:hover{background:var(--panel-2);}
+  .conv-item.active{background:var(--panel-2); color:var(--text);}
+  #status-line{
+    padding:10px 16px; border-top:1px solid var(--border); font-size:11px; color:var(--muted);
+    font-family:var(--mono);
+  }
+  #status-line .ok{color:#1a7a34;}
+  #status-line .bad{color:#c0392b;}
+
+  #airplane-mode{
+    padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center;
+    justify-content:space-between; gap:8px;
+  }
+  #airplane-mode .label{
+    display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text);
+  }
+  #airplane-mode .label .sub{display:block; font-size:11px; color:var(--muted); font-family:var(--mono);}
+  .switch{
+    position:relative; width:40px; height:22px; flex-shrink:0;
+  }
+  .switch input{opacity:0; width:0; height:0;}
+  .switch .slider{
+    position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
+    background:#cfcfcf; border-radius:22px; transition:.2s;
+  }
+  .switch .slider:before{
+    position:absolute; content:""; height:16px; width:16px; left:3px; bottom:3px;
+    background:#ffffff; border-radius:50%; transition:.2s;
+  }
+  .switch input:checked + .slider{background:#111111;}
+  .switch input:checked + .slider:before{transform:translateX(18px);}
+
+  /* Main */
+  #main{flex:1; display:flex; flex-direction:column; min-width:0;}
+  #chat-scroll{flex:1; overflow-y:auto; padding:32px 0;}
+  #chat-inner{max-width:760px; margin:0 auto; padding:0 24px; display:flex; flex-direction:column; gap:24px;}
+  .msg{display:flex; gap:12px; align-items:flex-start;}
+  .msg.user{flex-direction:row-reverse;}
+  .avatar{
+    width:28px; height:28px; border-radius:6px; flex-shrink:0; display:flex; align-items:center;
+    justify-content:center; font-size:13px; font-family:var(--mono); font-weight:700;
+  }
+  .msg.user .avatar{background:var(--accent-dim); color:#ffffff;}
+  .msg.assistant .avatar{background:var(--panel-2); color:var(--accent); border:1px solid var(--border);}
+  .bubble{
+    max-width:80%; padding:12px 16px; border-radius:12px; line-height:1.55; font-size:15px;
+    white-space:pre-wrap; word-wrap:break-word;
+  }
+  .msg.user .bubble{background:var(--user-bubble); color:var(--user-text);}
+  .msg.user .bubble code{background:rgba(255,255,255,.15); color:var(--user-text);}
+  .msg.assistant .bubble{background:transparent; padding:6px 0;}
+  .bubble code{
+    background:var(--panel-2); padding:2px 5px; border-radius:4px; font-family:var(--mono); font-size:13px;
+  }
+  .code-block{
+    background:#fafafa; border:1px solid var(--border); border-radius:10px; margin:10px 0; overflow:hidden;
+  }
+  .code-block-header{
+    display:flex; align-items:center; justify-content:space-between; padding:8px 12px;
+    background:#eeeeee; border-bottom:1px solid var(--border);
+  }
+  .code-lang{
+    font-family:var(--mono); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;
+  }
+  .code-copy-btn{
+    background:none; border:1px solid var(--border); border-radius:6px; padding:4px 8px; font-size:11px;
+    cursor:pointer; color:var(--text); font-family:var(--sans);
+  }
+  .code-copy-btn:hover{background:#ffffff;}
+  .code-copy-btn.copied{color:#1a7a34; border-color:#1a7a34;}
+  .code-block pre{
+    background:none; border:none; margin:0; padding:14px; overflow-x:auto;
+  }
+  .code-block pre code{
+    background:none; padding:0; font-family:var(--mono); font-size:13px; line-height:1.5;
+  }
+  .msg-actions{
+    display:flex; gap:8px; margin-top:4px;
+  }
+  .copy-btn{
+    background:none; border:none; color:var(--muted); font-size:12px; cursor:pointer;
+    padding:2px 6px; border-radius:5px; display:flex; align-items:center; gap:4px; font-family:var(--sans);
+  }
+  .copy-btn:hover{background:var(--panel-2); color:var(--text);}
+  .copy-btn.copied{color:#1a7a34;}
+  #empty-state{
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:var(--muted); text-align:center; gap:8px;
+  }
+  #empty-state .big{font-family:var(--mono); font-size:22px; color:var(--text);}
+  #empty-state .small{font-size:13px; max-width:400px;}
+
+  #input-area{
+    border-top:1px solid var(--border); padding:16px 24px 20px; background:var(--bg);
+  }
+  #input-inner{max-width:760px; margin:0 auto; display:flex; gap:10px; align-items:flex-end;}
+  #attach-preview{
+    max-width:760px; margin:0 auto 10px; display:flex; flex-wrap:wrap; gap:8px;
+  }
+  .file-chip{
+    display:flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--border);
+    border-radius:8px; padding:6px 10px; font-size:12px; font-family:var(--mono); color:var(--text);
+  }
+  .file-chip .remove-chip{
+    cursor:pointer; color:var(--muted); font-weight:700; padding:0 2px;
+  }
+  .file-chip .remove-chip:hover{color:#e07a5f;}
+  .msg-attachments{
+    display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;
+  }
+  .msg-attachments .file-chip{opacity:.85;}
+  #attach-btn{
+    background:var(--panel); color:var(--muted); border:1px solid var(--border); border-radius:10px;
+    width:44px; height:44px; cursor:pointer; font-size:18px; flex-shrink:0; display:flex;
+    align-items:center; justify-content:center;
+  }
+  #attach-btn:hover{color:var(--accent); border-color:var(--accent-dim);}
+  #prompt{
+    flex:1; background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    color:var(--text); padding:12px 14px; font-size:15px; font-family:var(--sans); resize:none;
+    max-height:200px; line-height:1.4;
+  }
+  #prompt:focus{outline:none; border-color:var(--accent-dim);}
+  #send-btn{
+    background:var(--accent-dim); color:#ffffff; border:none; border-radius:10px; width:44px; height:44px;
+    cursor:pointer; font-size:16px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  }
+  #send-btn:hover{background:#000000;}
+  #send-btn:disabled{background:var(--panel-2); color:var(--muted); cursor:not-allowed;}
+  #stop-btn{
+    background:#c0392b; color:#ffffff; border:none; border-radius:10px; width:44px; height:44px;
+    cursor:pointer; font-size:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  }
+  #stop-btn:hover{background:#a5301f;}
+  #sync-row{
+    display:flex; gap:8px; padding:0 16px 12px;
+  }
+  .sync-btn{
+    flex:1; padding:8px 4px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
+    cursor:pointer; font-size:11.5px; color:var(--text); font-family:var(--sans); text-align:center;
+  }
+  .sync-btn:hover{background:var(--border);}
+  .typing-dot{
+    display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent);
+    margin-right:3px; animation:pulse 1.2s infinite ease-in-out;
+  }
+  .typing-dot:nth-child(2){animation-delay:.2s;}
+  .typing-dot:nth-child(3){animation-delay:.4s;}
+  @keyframes pulse{0%,80%,100%{opacity:.3;} 40%{opacity:1;}}
+
+  /* Topbar mobile */
+  #mobile-topbar{
+    display:none; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--border);
+    background:var(--bg); flex-shrink:0;
+  }
+  #hamburger-btn{
+    background:none; border:none; font-size:20px; cursor:pointer; color:var(--text); padding:4px 6px;
+    line-height:1;
+  }
+  #mobile-topbar .title{font-family:var(--mono); font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+
+  #sidebar-overlay{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:40;
+  }
+
+  @media (max-width: 768px){
+    #mobile-topbar{display:flex;}
+    #sidebar{
+      position:fixed; top:0; bottom:0; left:0; width:82vw; max-width:300px; z-index:50;
+      transform:translateX(-100%); transition:transform .22s ease; box-shadow:2px 0 24px rgba(0,0,0,.18);
+    }
+    #sidebar.open{transform:translateX(0);}
+    #sidebar-overlay.open{display:block;}
+    #chat-inner{padding:0 14px;}
+    .bubble{max-width:88%; font-size:14.5px;}
+    #input-area{padding:10px 12px 14px;}
+    #input-inner{gap:8px;}
+    #prompt{font-size:16px;} /* evita zoom automático no iOS */
+    .avatar{width:24px; height:24px;}
+    #empty-state{padding:0 20px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="sidebar-header">
+    <div id="brand"><span class="dot"></span> Ollama Chat</div>
+    <button id="new-chat">+ Nova conversa</button>
+  </div>
+  <div id="model-picker">
+    <div id="provider-toggle">
+      <button class="provider-btn active" id="provider-ollama" type="button">🦙 Ollama (local)</button>
+      <button class="provider-btn" id="provider-gemini" type="button">✨ Gemini (API)</button>
+    </div>
+    <label>Modelo</label>
+    <select id="model-select"><option>Carregando...</option></select>
+    <div id="gemini-key-box">
+      <input type="password" id="gemini-key-input" placeholder="Sua chave de API do Gemini">
+      <span class="hint">Fica salva só neste navegador. Precisa de internet — desligue o modo avião. Pegue sua chave grátis em aistudio.google.com/apikey</span>
+    </div>
+  </div>
+  <div id="airplane-mode">
+    <div class="label">
+      ✈️
+      <span>
+        Modo avião
+        <span class="sub" id="airplane-sub">bloqueando internet</span>
+      </span>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="airplane-toggle" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div id="conversations"></div>
+  <div id="sync-row">
+    <button class="sync-btn" id="export-btn">⬇ Exportar</button>
+    <button class="sync-btn" id="import-btn">⬆ Importar</button>
+    <input type="file" id="import-file-input" accept=".json" style="display:none">
+  </div>
+  <div id="status-line">verificando conexão...</div>
+</div>
+
+<div id="sidebar-overlay"></div>
+
+<div id="main">
+  <div id="mobile-topbar">
+    <button id="hamburger-btn">☰</button>
+    <span class="title" id="mobile-title">Ollama Chat</span>
+  </div>
+  <div id="chat-scroll">
+    <div id="empty-state">
+      <div class="big">Ollama Chat</div>
+      <div class="small">Escolha um modelo ao lado e comece a conversar. Tudo roda local, sem nuvem, sem internet.</div>
+    </div>
+    <div id="chat-inner" style="display:none;"></div>
+  </div>
+  <div id="input-area">
+    <div id="attach-preview"></div>
+    <div id="input-inner">
+      <input type="file" id="file-input" multiple style="display:none" accept=".txt,.md,.html,.htm,.css,.js,.py,.json,.csv,.xml,.yml,.yaml,.java,.c,.cpp,.ts,.jsx,.tsx,.sh,.log,.ini,.conf">
+      <button id="attach-btn" title="Anexar arquivo">📎</button>
+      <textarea id="prompt" rows="1" placeholder="Envie uma mensagem..."></textarea>
+      <button id="send-btn">↑</button>
+      <button id="stop-btn" style="display:none;">■</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const OLLAMA_URL = "http://localhost:11434";
+
+let airplaneMode = localStorage.getItem('ollama_airplane_mode') !== 'false'; // padrão: ligado
+
+const originalFetch = window.fetch.bind(window);
+window.fetch = function(url, opts){
+  const urlStr = url.toString();
+  if(airplaneMode && !urlStr.startsWith(OLLAMA_URL)){
+    return Promise.reject(new Error('Modo avião ativo: bloqueado acesso fora da rede local (' + urlStr + ')'));
+  }
+  return originalFetch(url, opts);
+};
+
+function applyAirplaneUI(){
+  const sub = document.getElementById('airplane-sub');
+  const toggle = document.getElementById('airplane-toggle');
+  if(toggle) toggle.checked = airplaneMode;
+  if(sub) sub.textContent = airplaneMode ? 'bloqueando internet' : 'internet liberada';
+}
+
+let conversations = JSON.parse(localStorage.getItem('ollama_chat_convos') || '[]');
+let activeConvoId = sessionStorage.getItem('ollama_active_convo') || null;
+if(activeConvoId && !conversations.find(c => c.id === activeConvoId)){
+  activeConvoId = null;
+}
+let currentModel = null;
+let isStreaming = false;
+
+function setActiveConvo(id){
+  activeConvoId = id;
+  sessionStorage.setItem('ollama_active_convo', id || '');
+}
+
+const $ = id => document.getElementById(id);
+const modelSelect = $('model-select');
+const convosEl = $('conversations');
+const chatInner = $('chat-inner');
+const emptyState = $('empty-state');
+const chatScroll = $('chat-scroll');
+const promptEl = $('prompt');
+const sendBtn = $('send-btn');
+const stopBtn = $('stop-btn');
+const statusLine = $('status-line');
+const attachBtn = $('attach-btn');
+const fileInput = $('file-input');
+const attachPreview = $('attach-preview');
+
+let attachedFiles = []; // [{name, content}]
+const MAX_FILE_CHARS = 30000;
+let currentController = null;
+
+const GEMINI_MODELS = [
+  {id:'gemini-3.5-flash', label:'Gemini 3.5 Flash'},
+  {id:'gemini-3.1-flash-lite', label:'Gemini 3.1 Flash-Lite'},
+  {id:'gemini-3-flash-preview', label:'Gemini 3 Flash (preview)'}
+];
+let provider = localStorage.getItem('ollama_provider') || 'ollama';
+let geminiApiKey = localStorage.getItem('gemini_api_key') || '';
+
+const providerOllamaBtn = $('provider-ollama');
+const providerGeminiBtn = $('provider-gemini');
+const geminiKeyBox = $('gemini-key-box');
+const geminiKeyInput = $('gemini-key-input');
+geminiKeyInput.value = geminiApiKey;
+
+function applyProviderUI(){
+  providerOllamaBtn.classList.toggle('active', provider === 'ollama');
+  providerGeminiBtn.classList.toggle('active', provider === 'gemini');
+  geminiKeyBox.style.display = provider === 'gemini' ? 'block' : 'none';
+  if(provider === 'gemini'){
+    modelSelect.innerHTML = '';
+    GEMINI_MODELS.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.label;
+      modelSelect.appendChild(opt);
+    });
+    currentModel = GEMINI_MODELS[0].id;
+    statusLine.innerHTML = geminiApiKey
+      ? '<span class="ok">●</span> chave do Gemini configurada'
+      : '<span class="bad">●</span> cole sua chave de API acima';
+  }else{
+    loadModels();
+  }
+}
+
+providerOllamaBtn.addEventListener('click', () => {
+  provider = 'ollama';
+  localStorage.setItem('ollama_provider', 'ollama');
+  applyProviderUI();
+});
+providerGeminiBtn.addEventListener('click', () => {
+  provider = 'gemini';
+  localStorage.setItem('ollama_provider', 'gemini');
+  applyProviderUI();
+});
+geminiKeyInput.addEventListener('input', () => {
+  geminiApiKey = geminiKeyInput.value.trim();
+  localStorage.setItem('gemini_api_key', geminiApiKey);
+  if(provider === 'gemini') applyProviderUI();
+});
+
+function saveConvos(){
+  localStorage.setItem('ollama_chat_convos', JSON.stringify(conversations));
+}
+
+window.addEventListener('storage', (e) => {
+  if(e.key === 'ollama_chat_convos'){
+    conversations = JSON.parse(e.newValue || '[]');
+    renderConvoList();
+    if(activeConvoId && conversations.find(c => c.id === activeConvoId)){
+      renderMessages();
+    }
+  }
+});
+
+function newConvo(){
+  const convo = { id: Date.now().toString(), title: 'Nova conversa', messages: [], model: currentModel };
+  conversations.unshift(convo);
+  setActiveConvo(convo.id);
+  saveConvos();
+  renderConvoList();
+  renderMessages();
+}
+
+function renderConvoList(){
+  convosEl.innerHTML = '';
+  conversations.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'conv-item' + (c.id === activeConvoId ? ' active' : '');
+
+    const title = document.createElement('span');
+    title.className = 'conv-title';
+    title.textContent = c.title;
+    title.addEventListener('click', () => {
+      setActiveConvo(c.id);
+      renderConvoList();
+      renderMessages();
+      if(isMobile()) closeSidebar();
+    });
+
+    const menuBtn = document.createElement('span');
+    menuBtn.className = 'conv-menu-btn';
+    menuBtn.textContent = '⋮';
+    menuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeAllConvoMenus();
+      const dropdown = document.createElement('div');
+      dropdown.className = 'conv-menu-dropdown';
+
+      const renameBtn = document.createElement('button');
+      renameBtn.innerHTML = '✏️ Renomear';
+      renameBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        dropdown.remove();
+        startRenameConvo(c, title);
+      });
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'danger';
+      deleteBtn.innerHTML = '🗑 Apagar';
+      deleteBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        dropdown.remove();
+        if(!confirm(`Apagar a conversa "${c.title}"? Essa ação não pode ser desfeita.`)) return;
+        conversations = conversations.filter(x => x.id !== c.id);
+        if(activeConvoId === c.id){
+          setActiveConvo(conversations.length > 0 ? conversations[0].id : null);
+        }
+        saveConvos();
+        renderConvoList();
+        renderMessages();
+      });
+
+      dropdown.appendChild(renameBtn);
+      dropdown.appendChild(deleteBtn);
+      div.appendChild(dropdown);
+    });
+
+    div.appendChild(title);
+    div.appendChild(menuBtn);
+    convosEl.appendChild(div);
+  });
+}
+
+function closeAllConvoMenus(){
+  document.querySelectorAll('.conv-menu-dropdown').forEach(el => el.remove());
+}
+document.addEventListener('click', closeAllConvoMenus);
+
+function startRenameConvo(c, titleEl){
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'conv-rename-input';
+  input.value = c.title;
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let committed = false;
+  function commit(){
+    if(committed) return;
+    committed = true;
+    const newTitle = input.value.trim();
+    c.title = newTitle || c.title;
+    saveConvos();
+    renderConvoList();
+  }
+  input.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter') commit();
+    if(e.key === 'Escape'){ committed = true; renderConvoList(); }
+  });
+  input.addEventListener('blur', commit);
+  input.addEventListener('click', (e) => e.stopPropagation());
+}
+
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function formatContent(text){
+  // basic markdown: code blocks (com cabeçalho e botão de copiar próprio) e código inline
+  let html = escapeHtml(text);
+  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (m, lang, code) => {
+    const label = lang ? lang : 'código';
+    return `<div class="code-block"><div class="code-block-header"><span class="code-lang">${label}</span><button class="code-copy-btn">⧉ Copiar</button></div><pre><code>${code.trim()}</code></pre></div>`;
+  });
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  return html;
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.code-copy-btn');
+  if(!btn) return;
+  const block = btn.closest('.code-block');
+  const codeEl = block.querySelector('pre code');
+  navigator.clipboard.writeText(codeEl.innerText).then(() => {
+    const original = btn.textContent;
+    btn.textContent = '✓ Copiado';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1500);
+  });
+});
+
+function renderMessages(){
+  const convo = conversations.find(c => c.id === activeConvoId);
+  const mobileTitle = $('mobile-title');
+  if(mobileTitle) mobileTitle.textContent = convo ? convo.title : 'Ollama Chat';
+  if(!convo){
+    emptyState.style.display = 'flex';
+    chatInner.style.display = 'none';
+    return;
+  }
+  emptyState.style.display = 'none';
+  chatInner.style.display = 'flex';
+  chatInner.innerHTML = '';
+  convo.messages.forEach(m => appendMessageEl(m.role, m.displayText || m.content, false, m.attachments || []));
+  chatScroll.scrollTop = chatScroll.scrollHeight;
+}
+
+function appendMessageEl(role, content, scroll=true, attachments=[]){
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + role;
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  avatar.textContent = role === 'user' ? 'Você' : 'IA';
+  avatar.style.fontSize = role === 'user' ? '10px' : '12px';
+  const bubbleWrap = document.createElement('div');
+  if(attachments && attachments.length){
+    const attWrap = document.createElement('div');
+    attWrap.className = 'msg-attachments';
+    attachments.forEach(name => {
+      const chip = document.createElement('div');
+      chip.className = 'file-chip';
+      chip.innerHTML = `📄 ${escapeHtml(name)}`;
+      attWrap.appendChild(chip);
+    });
+    bubbleWrap.appendChild(attWrap);
+  }
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.innerHTML = formatContent(content);
+  bubbleWrap.appendChild(bubble);
+
+  const actions = document.createElement('div');
+  actions.className = 'msg-actions';
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'copy-btn';
+  copyBtn.textContent = '⧉ Copiar';
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(bubble.innerText).then(() => {
+      copyBtn.textContent = '✓ Copiado';
+      copyBtn.classList.add('copied');
+      setTimeout(() => { copyBtn.textContent = '⧉ Copiar'; copyBtn.classList.remove('copied'); }, 1500);
+    });
+  });
+  actions.appendChild(copyBtn);
+  bubbleWrap.appendChild(actions);
+
+  wrap.appendChild(avatar);
+  wrap.appendChild(bubbleWrap);
+  chatInner.appendChild(wrap);
+  if(scroll) chatScroll.scrollTop = chatScroll.scrollHeight;
+  return bubble;
+}
+
+async function loadModels(){
+  try{
+    const res = await fetch(`${OLLAMA_URL}/api/tags`);
+    if(!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    modelSelect.innerHTML = '';
+    if(!data.models || data.models.length === 0){
+      modelSelect.innerHTML = '<option>Nenhum modelo instalado</option>';
+      statusLine.innerHTML = '<span class="bad">●</span> conectado, sem modelos (ollama pull &lt;modelo&gt;)';
+      return;
+    }
+    data.models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.name;
+      opt.textContent = m.name;
+      modelSelect.appendChild(opt);
+    });
+    currentModel = data.models[0].name;
+    statusLine.innerHTML = '<span class="ok">●</span> conectado ao Ollama';
+  }catch(e){
+    modelSelect.innerHTML = '<option>Ollama offline</option>';
+    statusLine.innerHTML = '<span class="bad">●</span> não foi possível conectar em localhost:11434';
+  }
+}
+
+modelSelect.addEventListener('change', () => { currentModel = modelSelect.value; });
+
+$('airplane-toggle').addEventListener('change', (e) => {
+  airplaneMode = e.target.checked;
+  localStorage.setItem('ollama_airplane_mode', airplaneMode ? 'true' : 'false');
+  applyAirplaneUI();
+});
+
+attachBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', async () => {
+  const files = Array.from(fileInput.files);
+  for(const file of files){
+    try{
+      let text = await file.text();
+      let truncated = false;
+      if(text.length > MAX_FILE_CHARS){
+        text = text.slice(0, MAX_FILE_CHARS);
+        truncated = true;
+      }
+      attachedFiles.push({name: file.name, content: text, truncated});
+    }catch(e){
+      alert(`Não foi possível ler o arquivo ${file.name}: ${e.message}`);
+    }
+  }
+  fileInput.value = '';
+  renderAttachPreview();
+});
+
+function renderAttachPreview(){
+  attachPreview.innerHTML = '';
+  attachedFiles.forEach((f, idx) => {
+    const chip = document.createElement('div');
+    chip.className = 'file-chip';
+    chip.innerHTML = `📄 ${escapeHtml(f.name)} <span class="remove-chip" data-idx="${idx}">✕</span>`;
+    chip.querySelector('.remove-chip').addEventListener('click', () => {
+      attachedFiles.splice(idx, 1);
+      renderAttachPreview();
+    });
+    attachPreview.appendChild(chip);
+  });
+}
+
+promptEl.addEventListener('input', () => {
+  promptEl.style.height = 'auto';
+  promptEl.style.height = Math.min(promptEl.scrollHeight, 200) + 'px';
+});
+
+promptEl.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter' && !e.shiftKey){
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+sendBtn.addEventListener('click', sendMessage);
+stopBtn.addEventListener('click', () => {
+  if(currentController) currentController.abort();
+});
+$('new-chat').addEventListener('click', newConvo);
+
+async function sendMessage(){
+  const text = promptEl.value.trim();
+  if((!text && attachedFiles.length === 0) || isStreaming) return;
+
+  if(provider === 'ollama'){
+    if(!currentModel || currentModel.includes('Nenhum') || currentModel.includes('offline')){
+      alert('Nenhum modelo disponível. Verifique se o Ollama está rodando e se você já baixou um modelo com "ollama pull".');
+      return;
+    }
+  }else{
+    if(!geminiApiKey){
+      alert('Cole sua chave de API do Gemini no campo da barra lateral antes de enviar.');
+      return;
+    }
+  }
+
+  if(!activeConvoId) newConvo();
+  const convo = conversations.find(c => c.id === activeConvoId);
+
+  const filesToSend = attachedFiles.slice();
+  let fullContent = text;
+  filesToSend.forEach(f => {
+    fullContent += `\n\n--- Arquivo: ${f.name}${f.truncated ? ' (truncado)' : ''} ---\n${f.content}`;
+  });
+  const displayText = text || '(arquivo anexado sem mensagem)';
+
+  convo.messages.push({
+    role:'user',
+    content: fullContent,
+    displayText: displayText,
+    attachments: filesToSend.map(f => f.name)
+  });
+  if(convo.title === 'Nova conversa') convo.title = displayText.slice(0, 40);
+  saveConvos();
+  renderConvoList();
+
+  emptyState.style.display = 'none';
+  chatInner.style.display = 'flex';
+  appendMessageEl('user', displayText, true, filesToSend.map(f => f.name));
+  promptEl.value = '';
+  promptEl.style.height = 'auto';
+  attachedFiles = [];
+  renderAttachPreview();
+
+  const assistantBubble = appendMessageEl('assistant', '');
+  assistantBubble.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+
+  isStreaming = true;
+  sendBtn.disabled = true;
+  sendBtn.style.display = 'none';
+  stopBtn.style.display = 'flex';
+  currentController = new AbortController();
+
+  try{
+    if(provider === 'ollama'){
+      await streamFromOllama(convo, assistantBubble);
+    }else{
+      await sendToGemini(convo, assistantBubble);
+    }
+  }catch(e){
+    if(e.name === 'AbortError'){
+      // usuário parou a geração: guarda o que já tinha sido gerado até agora
+      const partial = assistantBubble.innerText || '';
+      assistantBubble.innerHTML = formatContent(partial + (partial ? '\n\n' : '') + '[resposta interrompida]');
+      convo.messages.push({role:'assistant', content: partial});
+      saveConvos();
+    }else{
+      const helpMsg = provider === 'ollama'
+        ? 'Verifique se ele está rodando (ollama serve) e se o CORS permite esta página (variável OLLAMA_ORIGINS).'
+        : 'Verifique se a chave de API do Gemini está correta, se o modo avião está desligado, e se não estourou a cota gratuita diária.';
+      assistantBubble.innerHTML = formatContent(`Erro ao falar com ${provider === 'ollama' ? 'o Ollama' : 'o Gemini'}: ` + e.message + '\n\n' + helpMsg);
+    }
+  }finally{
+    isStreaming = false;
+    sendBtn.disabled = false;
+    sendBtn.style.display = 'flex';
+    stopBtn.style.display = 'none';
+    currentController = null;
+  }
+}
+
+async function streamFromOllama(convo, assistantBubble){
+  const systemMsg = { role: 'system', content: 'Responda sempre em português do Brasil, independentemente do idioma da pergunta.' };
+  const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      model: currentModel,
+      messages: [systemMsg, ...convo.messages.map(m => ({role: m.role, content: m.content}))],
+      stream: true
+    }),
+    signal: currentController.signal
+  });
+
+  if(!res.ok) throw new Error('Erro na resposta do Ollama');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = '';
+  let buffer = '';
+
+  while(true){
+    const {done, value} = await reader.read();
+    if(done) break;
+    buffer += decoder.decode(value, {stream:true});
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for(const line of lines){
+      if(!line.trim()) continue;
+      const json = JSON.parse(line);
+      if(json.message && json.message.content){
+        fullText += json.message.content;
+        assistantBubble.innerHTML = formatContent(fullText);
+        chatScroll.scrollTop = chatScroll.scrollHeight;
+      }
+    }
+  }
+
+  convo.messages.push({role:'assistant', content: fullText});
+  saveConvos();
+}
+
+async function sendToGemini(convo, assistantBubble){
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent`;
+  const geminiContents = convo.messages.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }]
+  }));
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': geminiApiKey
+    },
+    body: JSON.stringify({
+      system_instruction: {
+        parts: [{ text: 'Responda sempre em português do Brasil, independentemente do idioma da pergunta.' }]
+      },
+      contents: geminiContents
+    }),
+    signal: currentController.signal
+  });
+
+  if(!res.ok){
+    const errBody = await res.text();
+    throw new Error(`HTTP ${res.status} — ${errBody.slice(0,200)}`);
+  }
+
+  const data = await res.json();
+  const candidate = (data.candidates || [])[0];
+  const fullText = candidate ? (candidate.content.parts || []).map(p => p.text || '').join('') : '(sem resposta)';
+  assistantBubble.innerHTML = formatContent(fullText);
+  chatScroll.scrollTop = chatScroll.scrollHeight;
+
+  convo.messages.push({role:'assistant', content: fullText});
+  saveConvos();
+}
+
+applyProviderUI();
+renderConvoList();
+renderMessages();
+applyAirplaneUI();
+
+const sidebarEl = $('sidebar');
+const sidebarOverlay = $('sidebar-overlay');
+const hamburgerBtn = $('hamburger-btn');
+const isMobile = () => window.innerWidth <= 768;
+
+function openSidebar(){
+  sidebarEl.classList.add('open');
+  sidebarOverlay.classList.add('open');
+}
+function closeSidebar(){
+  sidebarEl.classList.remove('open');
+  sidebarOverlay.classList.remove('open');
+}
+hamburgerBtn.addEventListener('click', () => {
+  sidebarEl.classList.contains('open') ? closeSidebar() : openSidebar();
+});
+sidebarOverlay.addEventListener('click', closeSidebar);
+
+// fecha o menu automaticamente no celular ao criar conversa
+$('new-chat').addEventListener('click', () => { if(isMobile()) closeSidebar(); });
+
+// Exportar / Importar conversas (sincronização manual entre aparelhos)
+$('export-btn').addEventListener('click', () => {
+  if(conversations.length === 0){
+    alert('Não tem nenhuma conversa pra exportar ainda.');
+    return;
+  }
+  const blob = new Blob([JSON.stringify(conversations, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const dateStr = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `ollama-chat-conversas-${dateStr}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+const importFileInput = $('import-file-input');
+$('import-btn').addEventListener('click', () => importFileInput.click());
+
+importFileInput.addEventListener('change', async () => {
+  const file = importFileInput.files[0];
+  if(!file) return;
+  try{
+    const text = await file.text();
+    const imported = JSON.parse(text);
+    if(!Array.isArray(imported)) throw new Error('Formato inválido');
+
+    const replace = confirm(
+      'Encontrei ' + imported.length + ' conversa(s) no arquivo.\n\n' +
+      'OK = Mesclar com as conversas que já tem aqui\n' +
+      'Cancelar = Substituir tudo pelas conversas do arquivo'
+    );
+
+    if(replace){
+      const existingIds = new Set(conversations.map(c => c.id));
+      const newOnes = imported.filter(c => c && c.id && !existingIds.has(c.id));
+      conversations = [...newOnes, ...conversations];
+    }else{
+      conversations = imported;
+      setActiveConvo(null);
+    }
+
+    saveConvos();
+    renderConvoList();
+    renderMessages();
+    alert('Conversas importadas com sucesso!');
+  }catch(e){
+    alert('Não consegui ler esse arquivo. Verifique se é um arquivo exportado por este mesmo app.');
+  }finally{
+    importFileInput.value = '';
+  }
+});
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {
+      // se falhar (ex: abrindo como file:// local), o app continua funcionando normal, só sem o modo instalável
+    });
+  });
+}
+</script>
+</body>
+</html>
