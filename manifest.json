@@ -1,7 +1,7 @@
 {
-  "name": "Ollama Chat",
-  "short_name": "Ollama Chat",
-  "description": "Chat com Ollama (local) e Gemini (API), no estilo Claude",
+  "name": "Gemini API",
+  "short_name": "Gemini API",
+  "description": "Chat com IA via chave de API, no estilo Claude",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
