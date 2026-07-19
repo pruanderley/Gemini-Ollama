@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-<title>Ollama Chat</title>
+<title>Gemini Chat</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#ffffff">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Ollama Chat">
+<meta name="apple-mobile-web-app-title" content="Gemini Chat">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <style>
@@ -72,19 +72,14 @@
   #conversations{
     flex:1; overflow-y:auto; padding:8px;
   }
-  #provider-toggle{
-    display:flex; gap:6px; margin-bottom:10px;
-  }
-  .provider-btn{
-    flex:1; padding:7px 4px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
-    cursor:pointer; font-size:12px; color:var(--muted); font-family:var(--sans); text-align:center;
-  }
-  .provider-btn.active{background:var(--accent-dim); color:#ffffff; border-color:var(--accent-dim);}
-  #gemini-key-box{margin-top:8px; display:none;}
+  #gemini-key-box{margin-top:8px;}
   #gemini-key-box input{
     width:100%; padding:7px 8px; background:var(--panel-2); color:var(--text); border:1px solid var(--border);
     border-radius:6px; font-size:12px; font-family:var(--mono);
   }
+  .key-status{font-size:11px; margin-top:5px; display:block; font-family:var(--sans);}
+  .key-status.valid{color:#1a7a34;}
+  .key-status.invalid{color:#c0392b;}
   #gemini-key-box .hint{font-size:10px; color:var(--muted); margin-top:5px; line-height:1.4; display:block;}
   .conv-item{
     padding:10px 12px; border-radius:8px; cursor:pointer; font-size:13px; color:var(--muted);
@@ -122,29 +117,6 @@
   }
   #status-line .ok{color:#1a7a34;}
   #status-line .bad{color:#c0392b;}
-
-  #airplane-mode{
-    padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center;
-    justify-content:space-between; gap:8px;
-  }
-  #airplane-mode .label{
-    display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text);
-  }
-  #airplane-mode .label .sub{display:block; font-size:11px; color:var(--muted); font-family:var(--mono);}
-  .switch{
-    position:relative; width:40px; height:22px; flex-shrink:0;
-  }
-  .switch input{opacity:0; width:0; height:0;}
-  .switch .slider{
-    position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
-    background:#cfcfcf; border-radius:22px; transition:.2s;
-  }
-  .switch .slider:before{
-    position:absolute; content:""; height:16px; width:16px; left:3px; bottom:3px;
-    background:#ffffff; border-radius:50%; transition:.2s;
-  }
-  .switch input:checked + .slider{background:#111111;}
-  .switch input:checked + .slider:before{transform:translateX(18px);}
 
   #zoom-control{
     padding:10px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center;
@@ -309,7 +281,7 @@
 <div id="app-scale-wrapper">
 <div id="sidebar">
   <div id="sidebar-header">
-    <div id="brand"><span class="dot"></span> Ollama Chat</div>
+    <div id="brand"><span class="dot"></span> Gemini Chat</div>
     <button id="new-chat">+ Nova conversa</button>
     <div id="io-buttons">
       <button id="export-btn" type="button">⬇ Exportar</button>
@@ -318,29 +290,13 @@
     </div>
   </div>
   <div id="model-picker">
-    <div id="provider-toggle">
-      <button class="provider-btn active" id="provider-ollama" type="button">🦙 Ollama (local)</button>
-      <button class="provider-btn" id="provider-gemini" type="button">✨ Gemini (API)</button>
-    </div>
     <label>Modelo</label>
     <select id="model-select"><option>Carregando...</option></select>
-    <div id="gemini-key-box">
-      <input type="password" id="gemini-key-input" placeholder="Sua chave de API do Gemini">
-      <span class="hint">Fica salva só neste navegador. Precisa de internet — desligue o modo avião. Pegue sua chave grátis em aistudio.google.com/apikey</span>
+    <div id="gemini-key-box" style="display:block;">
+      <input type="password" id="gemini-key-input" placeholder="Cole sua chave de API do Gemini">
+      <span class="key-status" id="key-status"></span>
+      <span class="hint">Fica salva só neste navegador. Pegue sua chave grátis em aistudio.google.com/apikey</span>
     </div>
-  </div>
-  <div id="airplane-mode">
-    <div class="label">
-      ✈️
-      <span>
-        Modo avião
-        <span class="sub" id="airplane-sub">bloqueando internet</span>
-      </span>
-    </div>
-    <label class="switch">
-      <input type="checkbox" id="airplane-toggle" checked>
-      <span class="slider"></span>
-    </label>
   </div>
   <div id="zoom-control">
     <span class="zoom-label">🔍 Zoom</span>
@@ -359,12 +315,12 @@
 <div id="main">
   <div id="mobile-topbar">
     <button id="hamburger-btn">☰</button>
-    <span class="title" id="mobile-title">Ollama Chat</span>
+    <span class="title" id="mobile-title">Gemini Chat</span>
   </div>
   <div id="chat-scroll">
     <div id="empty-state">
-      <div class="big">Ollama Chat</div>
-      <div class="small">Escolha um modelo ao lado e comece a conversar. Tudo roda local, sem nuvem, sem internet.</div>
+      <div class="big">Gemini Chat</div>
+      <div class="small">Cole sua chave de API do Gemini ao lado e comece a conversar.</div>
     </div>
     <div id="chat-inner" style="display:none;"></div>
   </div>
@@ -382,26 +338,6 @@
 </div>
 
 <script>
-const OLLAMA_URL = "http://localhost:11434";
-
-let airplaneMode = localStorage.getItem('ollama_airplane_mode') !== 'false'; // padrão: ligado
-
-const originalFetch = window.fetch.bind(window);
-window.fetch = function(url, opts){
-  const urlStr = url.toString();
-  if(airplaneMode && !urlStr.startsWith(OLLAMA_URL)){
-    return Promise.reject(new Error('Modo avião ativo: bloqueado acesso fora da rede local (' + urlStr + ')'));
-  }
-  return originalFetch(url, opts);
-};
-
-function applyAirplaneUI(){
-  const sub = document.getElementById('airplane-sub');
-  const toggle = document.getElementById('airplane-toggle');
-  if(toggle) toggle.checked = airplaneMode;
-  if(sub) sub.textContent = airplaneMode ? 'bloqueando internet' : 'internet liberada';
-}
-
 let conversations = JSON.parse(localStorage.getItem('ollama_chat_convos') || '[]');
 let activeConvoId = sessionStorage.getItem('ollama_active_convo') || null;
 if(activeConvoId && !conversations.find(c => c.id === activeConvoId)){
@@ -438,57 +374,54 @@ const GEMINI_MODELS = [
   {id:'gemini-3.1-flash-lite', label:'Gemini 3.1 Flash-Lite'},
   {id:'gemini-3-flash-preview', label:'Gemini 3 Flash (preview)'}
 ];
-let provider = localStorage.getItem('ollama_provider') || 'ollama';
 let geminiApiKey = localStorage.getItem('gemini_api_key') || '';
 
-const providerOllamaBtn = $('provider-ollama');
-const providerGeminiBtn = $('provider-gemini');
-const geminiKeyBox = $('gemini-key-box');
 const geminiKeyInput = $('gemini-key-input');
+const keyStatusEl = $('key-status');
 geminiKeyInput.value = geminiApiKey;
 
-function applyProviderUI(preferredModel){
-  providerOllamaBtn.classList.toggle('active', provider === 'ollama');
-  providerGeminiBtn.classList.toggle('active', provider === 'gemini');
-  geminiKeyBox.style.display = provider === 'gemini' ? 'block' : 'none';
-  if(provider === 'gemini'){
-    modelSelect.innerHTML = '';
-    GEMINI_MODELS.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.id;
-      opt.textContent = m.label;
-      modelSelect.appendChild(opt);
-    });
-    currentModel = (preferredModel && GEMINI_MODELS.find(m => m.id === preferredModel)) ? preferredModel : GEMINI_MODELS[0].id;
-    modelSelect.value = currentModel;
-    statusLine.innerHTML = geminiApiKey
-      ? '<span class="ok">●</span> chave do Gemini configurada'
-      : '<span class="bad">●</span> cole sua chave de API acima';
+function isValidGeminiKeyFormat(key){
+  return /^AIza[0-9A-Za-z_-]{30,40}$/.test(key);
+}
+
+function updateKeyStatus(){
+  if(!geminiApiKey){
+    keyStatusEl.textContent = '';
+    keyStatusEl.className = 'key-status';
+    statusLine.innerHTML = '<span class="bad">●</span> cole sua chave de API acima';
+    return;
+  }
+  if(isValidGeminiKeyFormat(geminiApiKey)){
+    keyStatusEl.textContent = '✓ Chave do Gemini reconhecida';
+    keyStatusEl.className = 'key-status valid';
+    statusLine.innerHTML = '<span class="ok">●</span> chave do Gemini configurada';
   }else{
-    loadModels(preferredModel);
+    keyStatusEl.textContent = '⚠ Isso não parece uma chave do Gemini (costuma começar com "AIza")';
+    keyStatusEl.className = 'key-status invalid';
+    statusLine.innerHTML = '<span class="bad">●</span> formato de chave não reconhecido';
   }
 }
 
-function switchToConvoProvider(convo){
-  provider = convo.provider || 'ollama';
-  localStorage.setItem('ollama_provider', provider);
-  applyProviderUI(convo.model);
+function populateModels(preferredModel){
+  modelSelect.innerHTML = '';
+  GEMINI_MODELS.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.label;
+    modelSelect.appendChild(opt);
+  });
+  currentModel = (preferredModel && GEMINI_MODELS.find(m => m.id === preferredModel)) ? preferredModel : GEMINI_MODELS[0].id;
+  modelSelect.value = currentModel;
 }
 
-providerOllamaBtn.addEventListener('click', () => {
-  provider = 'ollama';
-  localStorage.setItem('ollama_provider', 'ollama');
-  applyProviderUI();
-});
-providerGeminiBtn.addEventListener('click', () => {
-  provider = 'gemini';
-  localStorage.setItem('ollama_provider', 'gemini');
-  applyProviderUI();
-});
+function switchToConvoProvider(convo){
+  populateModels(convo.model);
+}
+
 geminiKeyInput.addEventListener('input', () => {
   geminiApiKey = geminiKeyInput.value.trim();
   localStorage.setItem('gemini_api_key', geminiApiKey);
-  if(provider === 'gemini') applyProviderUI();
+  updateKeyStatus();
 });
 
 function saveConvos(){
@@ -506,7 +439,7 @@ window.addEventListener('storage', (e) => {
 });
 
 function newConvo(){
-  const convo = { id: Date.now().toString(), title: 'Nova conversa', messages: [], model: currentModel, provider: provider };
+  const convo = { id: Date.now().toString(), title: 'Nova conversa', messages: [], model: currentModel };
   conversations.unshift(convo);
   setActiveConvo(convo.id);
   saveConvos();
@@ -637,7 +570,7 @@ document.addEventListener('click', (e) => {
 function renderMessages(){
   const convo = conversations.find(c => c.id === activeConvoId);
   const mobileTitle = $('mobile-title');
-  if(mobileTitle) mobileTitle.textContent = convo ? convo.title : 'Ollama Chat';
+  if(mobileTitle) mobileTitle.textContent = convo ? convo.title : 'Gemini Chat';
   if(!convo){
     emptyState.style.display = 'flex';
     chatInner.style.display = 'none';
@@ -696,39 +629,7 @@ function appendMessageEl(role, content, scroll=true, attachments=[]){
   return bubble;
 }
 
-async function loadModels(preferredModel){
-  try{
-    const res = await fetch(`${OLLAMA_URL}/api/tags`);
-    if(!res.ok) throw new Error('bad response');
-    const data = await res.json();
-    modelSelect.innerHTML = '';
-    if(!data.models || data.models.length === 0){
-      modelSelect.innerHTML = '<option>Nenhum modelo instalado</option>';
-      statusLine.innerHTML = '<span class="bad">●</span> conectado, sem modelos (ollama pull &lt;modelo&gt;)';
-      return;
-    }
-    data.models.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.name;
-      opt.textContent = m.name;
-      modelSelect.appendChild(opt);
-    });
-    currentModel = (preferredModel && data.models.find(m => m.name === preferredModel)) ? preferredModel : data.models[0].name;
-    modelSelect.value = currentModel;
-    statusLine.innerHTML = '<span class="ok">●</span> conectado ao Ollama';
-  }catch(e){
-    modelSelect.innerHTML = '<option>Ollama offline</option>';
-    statusLine.innerHTML = '<span class="bad">●</span> não foi possível conectar em localhost:11434';
-  }
-}
-
 modelSelect.addEventListener('change', () => { currentModel = modelSelect.value; });
-
-$('airplane-toggle').addEventListener('change', (e) => {
-  airplaneMode = e.target.checked;
-  localStorage.setItem('ollama_airplane_mode', airplaneMode ? 'true' : 'false');
-  applyAirplaneUI();
-});
 
 let zoomLevel = parseInt(localStorage.getItem('ollama_zoom') || '100', 10);
 const zoomLevelEl = $('zoom-level');
@@ -859,8 +760,7 @@ importFileInput.addEventListener('change', async () => {
         id: id,
         title: c.title || 'Conversa importada',
         messages: c.messages,
-        model: c.model || null,
-        provider: c.provider || 'ollama'
+        model: c.model || null
       });
       importedCount++;
     });
@@ -881,16 +781,12 @@ async function sendMessage(){
   const text = promptEl.value.trim();
   if((!text && attachedFiles.length === 0) || isStreaming) return;
 
-  if(provider === 'ollama'){
-    if(!currentModel || currentModel.includes('Nenhum') || currentModel.includes('offline')){
-      alert('Nenhum modelo disponível. Verifique se o Ollama está rodando e se você já baixou um modelo com "ollama pull".');
-      return;
-    }
-  }else{
-    if(!geminiApiKey){
-      alert('Cole sua chave de API do Gemini no campo da barra lateral antes de enviar.');
-      return;
-    }
+  if(!geminiApiKey){
+    alert('Cole sua chave de API do Gemini no campo da barra lateral antes de enviar.');
+    return;
+  }
+  if(!isValidGeminiKeyFormat(geminiApiKey)){
+    if(!confirm('Essa chave não parece ter o formato do Gemini (geralmente começa com "AIza"). Quer tentar enviar assim mesmo?')) return;
   }
 
   if(!activeConvoId) newConvo();
@@ -931,11 +827,7 @@ async function sendMessage(){
   currentController = new AbortController();
 
   try{
-    if(provider === 'ollama'){
-      await streamFromOllama(convo, assistantBubble);
-    }else{
-      await sendToGemini(convo, assistantBubble);
-    }
+    await sendToGemini(convo, assistantBubble);
   }catch(e){
     if(e.name === 'AbortError'){
       // usuário parou a geração: guarda o que já tinha sido gerado até agora
@@ -944,10 +836,7 @@ async function sendMessage(){
       convo.messages.push({role:'assistant', content: partial});
       saveConvos();
     }else{
-      const helpMsg = provider === 'ollama'
-        ? 'Verifique se ele está rodando (ollama serve) e se o CORS permite esta página (variável OLLAMA_ORIGINS).'
-        : 'Verifique se a chave de API do Gemini está correta, se o modo avião está desligado, e se não estourou a cota gratuita diária.';
-      assistantBubble.innerHTML = formatContent(`Erro ao falar com ${provider === 'ollama' ? 'o Ollama' : 'o Gemini'}: ` + e.message + '\n\n' + helpMsg);
+      assistantBubble.innerHTML = formatContent('Erro ao falar com o Gemini: ' + e.message + '\n\nVerifique se a chave de API está correta e se não estourou a cota gratuita diária.');
     }
   }finally{
     isStreaming = false;
@@ -956,47 +845,6 @@ async function sendMessage(){
     stopBtn.style.display = 'none';
     currentController = null;
   }
-}
-
-async function streamFromOllama(convo, assistantBubble){
-  const systemMsg = { role: 'system', content: 'Responda sempre em português do Brasil, independentemente do idioma da pergunta.' };
-  const res = await fetch(`${OLLAMA_URL}/api/chat`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      model: currentModel,
-      messages: [systemMsg, ...convo.messages.map(m => ({role: m.role, content: m.content}))],
-      stream: true
-    }),
-    signal: currentController.signal
-  });
-
-  if(!res.ok) throw new Error('Erro na resposta do Ollama');
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let fullText = '';
-  let buffer = '';
-
-  while(true){
-    const {done, value} = await reader.read();
-    if(done) break;
-    buffer += decoder.decode(value, {stream:true});
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-    for(const line of lines){
-      if(!line.trim()) continue;
-      const json = JSON.parse(line);
-      if(json.message && json.message.content){
-        fullText += json.message.content;
-        assistantBubble.innerHTML = formatContent(fullText);
-        chatScroll.scrollTop = chatScroll.scrollHeight;
-      }
-    }
-  }
-
-  convo.messages.push({role:'assistant', content: fullText});
-  saveConvos();
 }
 
 async function sendToGemini(convo, assistantBubble){
@@ -1040,11 +888,11 @@ const initialActiveConvo = conversations.find(c => c.id === activeConvoId);
 if(initialActiveConvo){
   switchToConvoProvider(initialActiveConvo);
 }else{
-  applyProviderUI();
+  populateModels();
 }
+updateKeyStatus();
 renderConvoList();
 renderMessages();
-applyAirplaneUI();
 applyZoom();
 
 const sidebarEl = $('sidebar');
