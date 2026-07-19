@@ -78,6 +78,18 @@
     border-radius:6px; font-size:12px; font-family:var(--mono);
   }
   .provider-detected{font-size:11px; margin-top:5px; display:block; font-family:var(--sans); color:var(--muted);}
+  #key-history{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}
+  .key-chip{
+    display:flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--border);
+    border-radius:8px; padding:5px 8px; font-size:11px; font-family:var(--mono); color:var(--text);
+    cursor:pointer;
+  }
+  .key-chip:hover{background:var(--panel-2);}
+  .key-chip.active-key{border-color:var(--accent-dim); background:var(--panel-2); font-weight:600;}
+  .key-chip .remove-key{
+    cursor:pointer; color:var(--muted); font-weight:700; padding:0 2px; font-family:var(--sans);
+  }
+  .key-chip .remove-key:hover{color:#c0392b;}
   .provider-detected.found{color:#1a7a34;}
   .conv-item{
     padding:10px 12px; border-radius:8px; cursor:pointer; font-size:13px; color:var(--muted);
@@ -291,6 +303,7 @@
     <div id="gemini-key-box" style="display:block;">
       <input type="password" id="gemini-key-input" placeholder="Cole sua chave de API (Gemini, Claude, Grok ou DeepSeek)">
       <span class="provider-detected" id="provider-detected"></span>
+      <div id="key-history"></div>
     </div>
     <label>Provedor</label>
     <select id="provider-select">
@@ -435,8 +448,58 @@ let activeProviderId = null;
 const geminiKeyInput = $('gemini-key-input');
 const providerSelect = $('provider-select');
 const providerDetectedEl = $('provider-detected');
+const keyHistoryEl = $('key-history');
 geminiKeyInput.value = apiKey;
 providerSelect.value = manualProvider;
+
+function loadSavedKeys(){
+  try{ return JSON.parse(localStorage.getItem('saved_api_keys') || '[]'); }
+  catch(e){ return []; }
+}
+let savedKeys = loadSavedKeys();
+
+function persistSavedKeys(){
+  localStorage.setItem('saved_api_keys', JSON.stringify(savedKeys));
+}
+
+function maskKey(k){
+  return k.length > 8 ? '••••' + k.slice(-4) : '••••';
+}
+
+function addKeyToHistory(k){
+  if(!k || k.length < 8) return;
+  if(!savedKeys.includes(k)){
+    savedKeys.unshift(k);
+    persistSavedKeys();
+  }
+  renderKeyHistory();
+}
+
+function renderKeyHistory(){
+  keyHistoryEl.innerHTML = '';
+  savedKeys.forEach(k => {
+    const provider = detectProvider(k);
+    const chip = document.createElement('div');
+    chip.className = 'key-chip' + (k === apiKey ? ' active-key' : '');
+    const label = provider ? PROVIDERS[provider].label : '❓';
+    chip.innerHTML = `${label} ${maskKey(k)} <span class="remove-key" title="Remover do histórico">✕</span>`;
+    chip.addEventListener('click', (e) => {
+      if(e.target.classList.contains('remove-key')) return;
+      apiKey = k;
+      geminiKeyInput.value = k;
+      localStorage.setItem('gemini_api_key', apiKey);
+      updateKeyStatus();
+      renderKeyHistory();
+    });
+    chip.querySelector('.remove-key').addEventListener('click', (e) => {
+      e.stopPropagation();
+      savedKeys = savedKeys.filter(x => x !== k);
+      persistSavedKeys();
+      renderKeyHistory();
+    });
+    keyHistoryEl.appendChild(chip);
+  });
+}
 
 function resolveProvider(){
   return manualProvider !== 'auto' ? manualProvider : detectProvider(apiKey);
@@ -492,6 +555,12 @@ geminiKeyInput.addEventListener('input', () => {
   apiKey = geminiKeyInput.value.trim();
   localStorage.setItem('gemini_api_key', apiKey);
   updateKeyStatus();
+  renderKeyHistory();
+});
+geminiKeyInput.addEventListener('blur', () => addKeyToHistory(apiKey));
+geminiKeyInput.addEventListener('paste', () => {
+  // espera o valor colado entrar no campo antes de salvar no histórico
+  setTimeout(() => addKeyToHistory(geminiKeyInput.value.trim()), 0);
 });
 
 providerSelect.addEventListener('change', () => {
@@ -1084,12 +1153,15 @@ async function sendToGroq(convo, assistantBubble){
   await streamOpenAICompatible('https://api.groq.com/openai/v1/chat/completions', convo, assistantBubble);
 }
 
+addKeyToHistory(apiKey);
+
 const initialActiveConvo = conversations.find(c => c.id === activeConvoId);
 if(initialActiveConvo){
   switchToConvoProvider(initialActiveConvo);
 }else{
   updateKeyStatus();
 }
+renderKeyHistory();
 renderConvoList();
 renderMessages();
 applyZoom();
