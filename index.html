@@ -298,6 +298,7 @@
       <option value="gemini">Gemini</option>
       <option value="claude">Claude</option>
       <option value="grok">Grok (xAI)</option>
+      <option value="groq">Groq</option>
       <option value="deepseek">DeepSeek</option>
     </select>
     <label>Modelo</label>
@@ -408,9 +409,17 @@ const PROVIDERS = {
       {id:'deepseek-v4-flash', label:'DeepSeek V4 Flash'},
       {id:'deepseek-v4-pro', label:'DeepSeek V4 Pro (raciocínio)'}
     ]
+  },
+  groq: {
+    label: 'Groq',
+    match: k => k.startsWith('gsk_'),
+    models: [
+      {id:'openai/gpt-oss-120b', label:'GPT-OSS 120B (Groq)'},
+      {id:'openai/gpt-oss-20b', label:'GPT-OSS 20B (Groq, rápido)'}
+    ]
   }
 };
-const PROVIDER_DETECT_ORDER = ['gemini', 'claude', 'grok', 'deepseek'];
+const PROVIDER_DETECT_ORDER = ['gemini', 'claude', 'grok', 'groq', 'deepseek'];
 
 function detectProvider(key){
   for(const id of PROVIDER_DETECT_ORDER){
@@ -895,7 +904,7 @@ async function sendMessage(){
   stopBtn.style.display = 'flex';
   currentController = new AbortController();
 
-  const sendFns = { gemini: sendToGemini, claude: sendToClaude, grok: sendToGrok, deepseek: sendToDeepSeek };
+  const sendFns = { gemini: sendToGemini, claude: sendToClaude, grok: sendToGrok, groq: sendToGroq, deepseek: sendToDeepSeek };
 
   try{
     await sendFns[activeProviderId](convo, assistantBubble);
@@ -1069,6 +1078,10 @@ async function sendToGrok(convo, assistantBubble){
 
 async function sendToDeepSeek(convo, assistantBubble){
   await streamOpenAICompatible('https://api.deepseek.com/chat/completions', convo, assistantBubble);
+}
+
+async function sendToGroq(convo, assistantBubble){
+  await streamOpenAICompatible('https://api.groq.com/openai/v1/chat/completions', convo, assistantBubble);
 }
 
 const initialActiveConvo = conversations.find(c => c.id === activeConvoId);
