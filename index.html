@@ -103,22 +103,15 @@
     flex:1; font-size:13px; font-family:var(--sans); color:var(--text); background:#ffffff;
     border:1px solid var(--accent-dim); border-radius:4px; padding:2px 6px;
   }
-  .conv-menu-btn{
-    opacity:0; color:var(--muted); font-size:15px; padding:2px 6px; border-radius:4px; flex-shrink:0;
-    line-height:1;
+  .conv-actions{
+    display:flex; gap:2px; flex-shrink:0;
   }
-  .conv-item:hover .conv-menu-btn{opacity:1;}
-  .conv-menu-btn:hover{background:var(--panel); color:var(--text);}
-  .conv-menu-dropdown{
-    position:absolute; top:100%; right:8px; background:#ffffff; border:1px solid var(--border);
-    border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.12); z-index:20; overflow:hidden; min-width:150px;
+  .conv-action-btn{
+    color:var(--muted); font-size:13px; padding:4px 6px; border-radius:4px; line-height:1;
+    background:none; border:none; cursor:pointer; font-family:var(--sans);
   }
-  .conv-menu-dropdown button{
-    display:flex; align-items:center; gap:8px; width:100%; padding:9px 12px; background:none; border:none;
-    text-align:left; font-size:13px; color:var(--text); cursor:pointer; font-family:var(--sans);
-  }
-  .conv-menu-dropdown button:hover{background:var(--panel);}
-  .conv-menu-dropdown button.danger{color:#c0392b;}
+  .conv-action-btn:hover{background:var(--panel); color:var(--text);}
+  .conv-action-btn.danger:hover{color:#c0392b;}
   .conv-item:hover{background:var(--panel-2);}
   .conv-item.active{background:var(--panel-2); color:var(--text);}
   #status-line{
@@ -159,9 +152,10 @@
   }
   .msg.user .avatar{background:var(--accent-dim); color:#ffffff;}
   .msg.assistant .avatar{background:var(--panel-2); color:var(--accent); border:1px solid var(--border);}
+  .bubble-wrap{max-width:80%;}
   .bubble{
-    max-width:80%; padding:14px 20px; border-radius:18px; line-height:1.65; font-size:15px;
-    white-space:pre-wrap;
+    padding:14px 20px; border-radius:18px; line-height:1.65; font-size:15px;
+    white-space:pre-wrap; overflow-wrap:break-word;
   }
   .msg.user .bubble{background:var(--user-bubble); color:var(--user-text); min-width:48px; text-align:left;}
   .msg.user .bubble code{background:rgba(255,255,255,.15); color:var(--user-text);}
@@ -282,7 +276,8 @@
     #sidebar.open{transform:translateX(0);}
     #sidebar-overlay.open{display:block;}
     #chat-inner{padding:0 14px;}
-    .bubble{max-width:88%; font-size:14.5px;}
+    .bubble-wrap{max-width:88%;}
+    .bubble{font-size:14.5px;}
     #input-area{padding:10px 12px 14px;}
     #input-inner{gap:8px;}
     #prompt{font-size:16px;} /* evita zoom automático no iOS */
@@ -643,54 +638,41 @@ function renderConvoList(){
       if(isMobile()) closeSidebar();
     });
 
-    const menuBtn = document.createElement('span');
-    menuBtn.className = 'conv-menu-btn';
-    menuBtn.textContent = '⋮';
-    menuBtn.addEventListener('click', (e) => {
+    const actionsWrap = document.createElement('span');
+    actionsWrap.className = 'conv-actions';
+
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'conv-action-btn';
+    renameBtn.title = 'Renomear';
+    renameBtn.textContent = '✏️';
+    renameBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      closeAllConvoMenus();
-      const dropdown = document.createElement('div');
-      dropdown.className = 'conv-menu-dropdown';
-
-      const renameBtn = document.createElement('button');
-      renameBtn.innerHTML = '✏️ Renomear';
-      renameBtn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        dropdown.remove();
-        startRenameConvo(c, title);
-      });
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'danger';
-      deleteBtn.innerHTML = '🗑 Apagar';
-      deleteBtn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        dropdown.remove();
-        if(!confirm(`Apagar a conversa "${c.title}"? Essa ação não pode ser desfeita.`)) return;
-        conversations = conversations.filter(x => x.id !== c.id);
-        if(activeConvoId === c.id){
-          setActiveConvo(conversations.length > 0 ? conversations[0].id : null);
-        }
-        saveConvos();
-        renderConvoList();
-        renderMessages();
-      });
-
-      dropdown.appendChild(renameBtn);
-      dropdown.appendChild(deleteBtn);
-      div.appendChild(dropdown);
+      startRenameConvo(c, title);
     });
 
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'conv-action-btn danger';
+    deleteBtn.title = 'Apagar';
+    deleteBtn.textContent = '🗑';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if(!confirm(`Apagar a conversa "${c.title}"? Essa ação não pode ser desfeita.`)) return;
+      conversations = conversations.filter(x => x.id !== c.id);
+      if(activeConvoId === c.id){
+        setActiveConvo(conversations.length > 0 ? conversations[0].id : null);
+      }
+      saveConvos();
+      renderConvoList();
+      renderMessages();
+    });
+
+    actionsWrap.appendChild(renameBtn);
+    actionsWrap.appendChild(deleteBtn);
     div.appendChild(title);
-    div.appendChild(menuBtn);
+    div.appendChild(actionsWrap);
     convosEl.appendChild(div);
   });
 }
-
-function closeAllConvoMenus(){
-  document.querySelectorAll('.conv-menu-dropdown').forEach(el => el.remove());
-}
-document.addEventListener('click', closeAllConvoMenus);
 
 function startRenameConvo(c, titleEl){
   const input = document.createElement('input');
@@ -770,6 +752,7 @@ function appendMessageEl(role, content, scroll=true, attachments=[]){
   avatar.textContent = role === 'user' ? 'Você' : 'IA';
   avatar.style.fontSize = role === 'user' ? '10px' : '12px';
   const bubbleWrap = document.createElement('div');
+  bubbleWrap.className = 'bubble-wrap';
   if(attachments && attachments.length){
     const attWrap = document.createElement('div');
     attWrap.className = 'msg-attachments';
