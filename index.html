@@ -194,6 +194,19 @@
   }
   .copy-btn:hover{background:var(--panel-2); color:var(--text);}
   .copy-btn.copied{color:#1a7a34;}
+  .edit-textarea{
+    width:100%; min-height:44px; padding:12px 16px; border-radius:14px; border:1px solid var(--accent-dim);
+    background:#ffffff; color:var(--text); font-family:var(--sans); font-size:15px; line-height:1.5;
+    resize:none;
+  }
+  .edit-actions{display:flex; gap:8px; margin-top:6px;}
+  .edit-save-btn, .edit-cancel-btn{
+    padding:6px 12px; border-radius:8px; font-size:12px; cursor:pointer; font-family:var(--sans); border:none;
+  }
+  .edit-save-btn{background:var(--accent-dim); color:#ffffff;}
+  .edit-save-btn:hover{background:#000000;}
+  .edit-cancel-btn{background:var(--panel-2); color:var(--text);}
+  .edit-cancel-btn:hover{background:var(--border);}
   #empty-state{
     flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
     color:var(--muted); text-align:center; gap:8px;
@@ -740,11 +753,11 @@ function renderMessages(){
   emptyState.style.display = 'none';
   chatInner.style.display = 'flex';
   chatInner.innerHTML = '';
-  convo.messages.forEach(m => appendMessageEl(m.role, m.displayText || m.content, false, m.attachments || []));
+  convo.messages.forEach((m, idx) => appendMessageEl(m.role, m.displayText || m.content, false, m.attachments || [], idx));
   chatScroll.scrollTop = chatScroll.scrollHeight;
 }
 
-function appendMessageEl(role, content, scroll=true, attachments=[]){
+function appendMessageEl(role, content, scroll=true, attachments=[], msgIndex=null){
   const wrap = document.createElement('div');
   wrap.className = 'msg ' + role;
   const avatar = document.createElement('div');
@@ -782,6 +795,18 @@ function appendMessageEl(role, content, scroll=true, attachments=[]){
     });
   });
   actions.appendChild(copyBtn);
+
+  if(role === 'user' && msgIndex !== null){
+    const editBtn = document.createElement('button');
+    editBtn.className = 'copy-btn';
+    editBtn.textContent = '✏️ Editar';
+    editBtn.addEventListener('click', () => {
+      if(isStreaming) return;
+      enterEditMode(msgIndex, bubbleWrap, content);
+    });
+    actions.appendChild(editBtn);
+  }
+
   bubbleWrap.appendChild(actions);
 
   wrap.appendChild(avatar);
@@ -789,6 +814,50 @@ function appendMessageEl(role, content, scroll=true, attachments=[]){
   chatInner.appendChild(wrap);
   if(scroll) chatScroll.scrollTop = chatScroll.scrollHeight;
   return bubble;
+}
+
+function enterEditMode(msgIndex, bubbleWrap, originalText){
+  bubbleWrap.innerHTML = '';
+  const textarea = document.createElement('textarea');
+  textarea.className = 'edit-textarea';
+  textarea.value = originalText;
+  bubbleWrap.appendChild(textarea);
+  textarea.style.height = 'auto';
+  textarea.style.height = Math.min(textarea.scrollHeight, 300) + 'px';
+  textarea.addEventListener('input', () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 300) + 'px';
+  });
+
+  const editActions = document.createElement('div');
+  editActions.className = 'edit-actions';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'edit-save-btn';
+  saveBtn.textContent = 'Salvar e reenviar';
+  saveBtn.addEventListener('click', async () => {
+    const newText = textarea.value.trim();
+    if(!newText) return;
+    const convo = conversations.find(c => c.id === activeConvoId);
+    if(!convo) return;
+    // remove essa mensagem e tudo que veio depois (a resposta antiga ficaria desatualizada)
+    convo.messages = convo.messages.slice(0, msgIndex);
+    convo.messages.push({role:'user', content:newText, displayText:newText, attachments:[]});
+    saveConvos();
+    renderConvoList();
+    renderMessages();
+    await runAssistantTurn(convo);
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'edit-cancel-btn';
+  cancelBtn.textContent = 'Cancelar';
+  cancelBtn.addEventListener('click', () => renderMessages());
+
+  editActions.appendChild(saveBtn);
+  editActions.appendChild(cancelBtn);
+  bubbleWrap.appendChild(editActions);
+  textarea.focus();
 }
 
 modelSelect.addEventListener('change', () => { currentModel = modelSelect.value; });
@@ -972,14 +1041,24 @@ async function sendMessage(){
   if(convo.title === 'Nova conversa') convo.title = displayText.slice(0, 40);
   saveConvos();
   renderConvoList();
-
-  emptyState.style.display = 'none';
-  chatInner.style.display = 'flex';
-  appendMessageEl('user', displayText, true, filesToSend.map(f => f.name));
+  renderMessages();
   promptEl.value = '';
   promptEl.style.height = 'auto';
   attachedFiles = [];
   renderAttachPreview();
+
+  await runAssistantTurn(convo);
+}
+
+async function runAssistantTurn(convo){
+  if(!apiKey){
+    alert('Cole sua chave de API antes de enviar.');
+    return;
+  }
+  if(!activeProviderId){
+    alert('Não consegui identificar o provedor dessa chave. Selecione manualmente no campo "Provedor" na barra lateral.');
+    return;
+  }
 
   const assistantBubble = appendMessageEl('assistant', '');
   assistantBubble.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
