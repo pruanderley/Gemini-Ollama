@@ -12,6 +12,8 @@
 <meta name="apple-mobile-web-app-title" content="Gemini API">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
 <style>
   :root{
     --bg: #ffffff;
@@ -185,6 +187,23 @@
   .code-block pre code{
     background:none; padding:0; font-family:var(--mono); font-size:13px; line-height:1.5;
   }
+  .bubble p{margin:0 0 8px;}
+  .bubble p:last-child{margin-bottom:0;}
+  .bubble ul, .bubble ol{padding-left:22px; margin:6px 0;}
+  .bubble li{margin:3px 0;}
+  .bubble table{border-collapse:collapse; margin:10px 0; font-size:13.5px; max-width:100%; overflow-x:auto; display:block;}
+  .bubble th, .bubble td{border:1px solid var(--border); padding:6px 10px; text-align:left;}
+  .bubble th{background:var(--panel-2); font-weight:600;}
+  .bubble blockquote{
+    border-left:3px solid var(--border); margin:8px 0; padding:2px 12px; color:var(--muted);
+  }
+  .bubble hr{border:none; border-top:1px solid var(--border); margin:12px 0;}
+  .bubble h1, .bubble h2, .bubble h3, .bubble h4{margin:12px 0 6px; line-height:1.3;}
+  .bubble h1:first-child, .bubble h2:first-child, .bubble h3:first-child{margin-top:0;}
+  .bubble a{color:inherit; text-decoration:underline; text-underline-offset:2px;}
+  .msg.user .bubble blockquote{color:rgba(255,255,255,.75); border-left-color:rgba(255,255,255,.35);}
+  .msg.user .bubble th, .msg.user .bubble td{border-color:rgba(255,255,255,.25);}
+  .msg.user .bubble th{background:rgba(255,255,255,.1);}
   .msg-actions{
     display:flex; gap:8px; margin-top:4px;
   }
@@ -339,7 +358,7 @@
     </div>
   </div>
   <div id="conversations"></div>
-  <div id="status-line">verificando conexão...</div>
+  <div id="status-line" role="status" aria-live="polite">verificando conexão...</div>
 </div>
 
 <div id="sidebar-overlay"></div>
@@ -370,11 +389,8 @@
 </div>
 
 <script>
-let conversations = JSON.parse(localStorage.getItem('ollama_chat_convos') || '[]');
+let conversations = []; // carregado do IndexedDB de forma assíncrona logo abaixo (ver loadConversations)
 let activeConvoId = sessionStorage.getItem('ollama_active_convo') || null;
-if(activeConvoId && !conversations.find(c => c.id === activeConvoId)){
-  activeConvoId = null;
-}
 let currentModel = null;
 let isStreaming = false;
 
@@ -611,19 +627,93 @@ if(manualProvider !== 'auto'){
 }
 geminiKeyInput.value = apiKey;
 
-function saveConvos(){
-  localStorage.setItem('ollama_chat_convos', JSON.stringify(conversations));
+// --- Armazenamento das conversas via IndexedDB ---
+// Antes usávamos localStorage (limite rígido de ~5-10MB, arriscado com anexos grandes).
+// IndexedDB aguenta muito mais dado com segurança, sem risco de estourar cota silenciosamente.
+const IDB_NAME = 'ollama_chat_db';
+const IDB_STORE = 'kv';
+let idbInstance = null;
+
+function openIDB(){
+  return new Promise((resolve, reject) => {
+    if(!('indexedDB' in window)){ reject(new Error('IndexedDB não disponível neste navegador')); return; }
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
 }
 
-window.addEventListener('storage', (e) => {
-  if(e.key === 'ollama_chat_convos'){
-    conversations = JSON.parse(e.newValue || '[]');
-    renderConvoList();
-    if(activeConvoId && conversations.find(c => c.id === activeConvoId)){
-      renderMessages();
-    }
+async function getIDB(){
+  if(!idbInstance) idbInstance = await openIDB();
+  return idbInstance;
+}
+
+async function idbSet(key, value){
+  const db = await getIDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function idbGet(key){
+  const db = await getIDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+// Carrega as conversas do IndexedDB; se estiver vazio, migra uma única vez os dados
+// antigos que possam existir no localStorage (versões anteriores deste app).
+async function loadConversations(){
+  try{
+    const stored = await idbGet('conversations');
+    if(stored && stored.length) return stored;
+  }catch(e){
+    console.error('Erro ao ler IndexedDB, tentando localStorage como respaldo:', e);
   }
-});
+  try{
+    const legacy = JSON.parse(localStorage.getItem('ollama_chat_convos') || '[]');
+    if(legacy.length){
+      await idbSet('conversations', legacy).catch(() => {});
+      return legacy;
+    }
+  }catch(e){ /* nada pra migrar */ }
+  return [];
+}
+
+const chatSyncChannel = ('BroadcastChannel' in window) ? new BroadcastChannel('ollama_chat_sync') : null;
+
+async function saveConvos(){
+  try{
+    await idbSet('conversations', conversations);
+    if(chatSyncChannel) chatSyncChannel.postMessage('conversations-updated');
+  }catch(e){
+    console.error('Erro ao salvar conversas:', e);
+    alert('Não foi possível salvar a conversa (armazenamento cheio ou indisponível). Considere exportar seu histórico.');
+  }
+}
+
+if(chatSyncChannel){
+  chatSyncChannel.onmessage = async (e) => {
+    if(e.data === 'conversations-updated'){
+      conversations = await idbGet('conversations') || [];
+      renderConvoList();
+      if(activeConvoId && conversations.find(c => c.id === activeConvoId)){
+        renderMessages();
+      }
+    }
+  };
+}
 
 function newConvo(){
   const convo = { id: Date.now().toString(), title: 'Nova conversa', messages: [], model: currentModel, provider: activeProviderId };
@@ -717,8 +807,36 @@ function escapeHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// Configura o marked pra gerar blocos de código no nosso formato (cabeçalho + botão de copiar)
+let markedConfigured = false;
+function configureMarked(){
+  if(markedConfigured || typeof marked === 'undefined') return;
+  const renderer = new marked.Renderer();
+  renderer.code = (code, lang) => {
+    const codeText = typeof code === 'string' ? code : (code && code.text) || '';
+    const language = (typeof lang === 'string' && lang) || (code && code.lang) || 'código';
+    return `<div class="code-block"><div class="code-block-header"><span class="code-lang">${escapeHtml(String(language))}</span><button class="code-copy-btn">⧉ Copiar</button></div><pre><code>${escapeHtml(codeText)}</code></pre></div>`;
+  };
+  marked.setOptions({ renderer, breaks: true });
+  markedConfigured = true;
+}
+
 function formatContent(text){
-  // basic markdown: code blocks (com cabeçalho e botão de copiar próprio) e código inline
+  // Markdown completo (tabelas, listas, citações, links...) via marked + sanitização contra XSS via DOMPurify.
+  // Se as bibliotecas não carregarem (ex: sem internet), cai num formatador básico só com blocos de código.
+  if(typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined'){
+    try{
+      configureMarked();
+      const rawHtml = marked.parse(text);
+      return DOMPurify.sanitize(rawHtml, { ADD_ATTR: ['target'] });
+    }catch(e){
+      console.error('Erro ao renderizar Markdown, usando formatação básica:', e);
+    }
+  }
+  return formatContentFallback(text);
+}
+
+function formatContentFallback(text){
   let html = escapeHtml(text);
   html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (m, lang, code) => {
     const label = lang ? lang : 'código';
@@ -1067,7 +1185,8 @@ async function runAssistantTurn(convo){
   sendBtn.disabled = true;
   sendBtn.style.display = 'none';
   stopBtn.style.display = 'flex';
-  currentController = new AbortController();
+  const myController = new AbortController();
+  currentController = myController;
 
   const sendFns = { gemini: sendToGemini, claude: sendToClaude, grok: sendToGrok, groq: sendToGroq, deepseek: sendToDeepSeek };
 
@@ -1075,24 +1194,29 @@ async function runAssistantTurn(convo){
     await sendFns[activeProviderId](convo, assistantBubble);
   }catch(e){
     if(e.name === 'AbortError'){
-      // usuário parou a geração: guarda o que já tinha sido gerado até agora
-      const partial = assistantBubble.innerText || '';
-      assistantBubble.innerHTML = formatContent(partial + (partial ? '\n\n' : '') + '[resposta interrompida]');
-      convo.messages.push({role:'assistant', content: partial});
-      saveConvos();
+      // só registra a interrupção se essa ainda for a chamada mais recente —
+      // se o usuário já editou e reenviou enquanto isso, essa resposta atrasada é descartada
+      if(currentController === myController){
+        const partial = assistantBubble.innerText || '';
+        assistantBubble.innerHTML = formatContent(partial + (partial ? '\n\n' : '') + '[resposta interrompida]');
+        convo.messages.push({role:'assistant', content: partial});
+        saveConvos();
+      }
     }else{
       assistantBubble.innerHTML = formatContent(`Erro ao falar com ${PROVIDERS[activeProviderId].label}: ` + e.message + '\n\nVerifique se a chave de API está correta e se há saldo/cota disponível.');
     }
   }finally{
-    isStreaming = false;
-    sendBtn.disabled = false;
-    sendBtn.style.display = 'flex';
-    stopBtn.style.display = 'none';
-    currentController = null;
+    if(currentController === myController){
+      isStreaming = false;
+      sendBtn.disabled = false;
+      sendBtn.style.display = 'flex';
+      stopBtn.style.display = 'none';
+      currentController = null;
+    }
   }
 }
 
-const SYSTEM_PROMPT = 'Responda sempre em português do Brasil, independentemente do idioma da pergunta.';
+const SYSTEM_PROMPT = 'Responda sempre em português do Brasil, independentemente do idioma da pergunta. Seja direto e proporcional: para cumprimentos simples (oi, bom dia, boa tarde, boa noite, obrigado) ou perguntas curtas, responda de forma breve e natural, sem introduções longas, floreios ou parágrafos desnecessários. Reserve respostas mais detalhadas apenas para quando a pergunta realmente pedir profundidade.';
 
 async function sendToGemini(convo, assistantBubble){
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent`;
@@ -1249,15 +1373,22 @@ async function sendToGroq(convo, assistantBubble){
   await streamOpenAICompatible('https://api.groq.com/openai/v1/chat/completions', convo, assistantBubble);
 }
 
-const initialActiveConvo = conversations.find(c => c.id === activeConvoId);
-if(initialActiveConvo){
-  switchToConvoProvider(initialActiveConvo);
-}else{
-  updateKeyStatus();
-}
-renderConvoList();
-renderMessages();
-applyZoom();
+(async function initApp(){
+  conversations = await loadConversations();
+  if(activeConvoId && !conversations.find(c => c.id === activeConvoId)){
+    activeConvoId = null;
+  }
+
+  const initialActiveConvo = conversations.find(c => c.id === activeConvoId);
+  if(initialActiveConvo){
+    switchToConvoProvider(initialActiveConvo);
+  }else{
+    updateKeyStatus();
+  }
+  renderConvoList();
+  renderMessages();
+  applyZoom();
+})();
 
 const sidebarEl = $('sidebar');
 const sidebarOverlay = $('sidebar-overlay');
