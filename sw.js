@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ollama-chat-v11';
+const CACHE_NAME = 'ollama-chat-v12';
 const ASSETS = [
   './index.html',
   './manifest.json',

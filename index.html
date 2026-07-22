@@ -258,6 +258,15 @@
     align-items:center; justify-content:center;
   }
   #attach-btn:hover{color:var(--accent); border-color:var(--accent-dim);}
+  #mic-btn{
+    background:var(--panel); color:var(--muted); border:1px solid var(--border); border-radius:10px;
+    width:44px; height:44px; cursor:pointer; font-size:18px; flex-shrink:0; display:flex;
+    align-items:center; justify-content:center;
+  }
+  #mic-btn:hover{color:var(--accent); border-color:var(--accent-dim);}
+  #mic-btn.recording{background:#c0392b; color:#ffffff; border-color:#c0392b; animation:mic-pulse 1.2s infinite;}
+  @keyframes mic-pulse{0%,100%{opacity:1;} 50%{opacity:.6;}}
+  .speak-btn.speaking{color:#1a7a34;}
   #prompt{
     flex:1; background:var(--panel); border:1px solid var(--border); border-radius:10px;
     color:var(--text); padding:12px 14px; font-size:15px; font-family:var(--sans); resize:none;
@@ -380,6 +389,7 @@
     <div id="input-inner">
       <input type="file" id="file-input" multiple style="display:none" accept=".txt,.md,.html,.htm,.css,.js,.py,.json,.csv,.xml,.yml,.yaml,.java,.c,.cpp,.ts,.jsx,.tsx,.sh,.log,.ini,.conf">
       <button id="attach-btn" title="Anexar arquivo">📎</button>
+      <button id="mic-btn" title="Enviar mensagem por voz" type="button">🎤</button>
       <textarea id="prompt" rows="1" placeholder="Envie uma mensagem..."></textarea>
       <button id="send-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg></button>
       <button id="stop-btn" style="display:none;">■</button>
@@ -860,6 +870,7 @@ document.addEventListener('click', (e) => {
 });
 
 function renderMessages(){
+  if('speechSynthesis' in window) speechSynthesis.cancel();
   const convo = conversations.find(c => c.id === activeConvoId);
   const mobileTitle = $('mobile-title');
   if(mobileTitle) mobileTitle.textContent = convo ? convo.title : 'Gemini API';
@@ -913,6 +924,30 @@ function appendMessageEl(role, content, scroll=true, attachments=[], msgIndex=nu
     });
   });
   actions.appendChild(copyBtn);
+
+  if(role === 'assistant' && 'speechSynthesis' in window){
+    const speakBtn = document.createElement('button');
+    speakBtn.className = 'copy-btn speak-btn';
+    speakBtn.textContent = '🔊 Ouvir';
+    speakBtn.addEventListener('click', () => {
+      if(speakBtn.classList.contains('speaking')){
+        speechSynthesis.cancel();
+        speakBtn.textContent = '🔊 Ouvir';
+        speakBtn.classList.remove('speaking');
+        return;
+      }
+      speechSynthesis.cancel(); // interrompe qualquer outra leitura em andamento antes de começar essa
+      const utterance = new SpeechSynthesisUtterance(bubble.innerText);
+      utterance.lang = 'pt-BR';
+      const restore = () => { speakBtn.textContent = '🔊 Ouvir'; speakBtn.classList.remove('speaking'); };
+      utterance.onend = restore;
+      utterance.onerror = restore;
+      speakBtn.textContent = '⏹ Parar';
+      speakBtn.classList.add('speaking');
+      speechSynthesis.speak(utterance);
+    });
+    actions.appendChild(speakBtn);
+  }
 
   if(role === 'user' && msgIndex !== null){
     const editBtn = document.createElement('button');
@@ -1006,6 +1041,63 @@ $('zoom-out').addEventListener('click', () => {
 zoomLevelEl.addEventListener('dblclick', () => { zoomLevel = 100; applyZoom(); });
 
 attachBtn.addEventListener('click', () => fileInput.click());
+
+// --- Envio de mensagem por voz (usa o reconhecimento de fala nativo do navegador, sem custo de API) ---
+const micBtn = $('mic-btn');
+const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let isRecording = false;
+
+if(!SpeechRecognitionAPI){
+  micBtn.style.display = 'none'; // navegador sem suporte (ex: Firefox) — esconde o botão em vez de dar erro
+}else{
+  micBtn.addEventListener('click', () => {
+    if(isRecording){
+      recognition.stop();
+      return;
+    }
+    recognition = new SpeechRecognitionAPI();
+    recognition.lang = 'pt-BR';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    const baseText = promptEl.value ? promptEl.value.trim() + ' ' : '';
+    let finalText = '';
+
+    recognition.onstart = () => {
+      isRecording = true;
+      micBtn.classList.add('recording');
+      micBtn.title = 'Gravando... clique pra parar';
+    };
+    recognition.onresult = (e) => {
+      let interim = '';
+      for(let i = e.resultIndex; i < e.results.length; i++){
+        const transcript = e.results[i][0].transcript;
+        if(e.results[i].isFinal){
+          finalText += transcript + ' ';
+        }else{
+          interim += transcript;
+        }
+      }
+      promptEl.value = baseText + finalText + interim;
+      promptEl.style.height = 'auto';
+      promptEl.style.height = Math.min(promptEl.scrollHeight, 200) + 'px';
+    };
+    recognition.onerror = (e) => {
+      if(e.error !== 'no-speech' && e.error !== 'aborted'){
+        alert('Não foi possível usar o microfone: ' + e.error + '. Verifique se o navegador tem permissão de microfone.');
+      }
+    };
+    recognition.onend = () => {
+      isRecording = false;
+      micBtn.classList.remove('recording');
+      micBtn.title = 'Enviar mensagem por voz';
+      promptEl.value = (baseText + finalText).trim();
+    };
+    recognition.start();
+  });
+}
+
 
 fileInput.addEventListener('change', async () => {
   const files = Array.from(fileInput.files);
@@ -1216,13 +1308,26 @@ async function runAssistantTurn(convo){
   }
 }
 
-const SYSTEM_PROMPT = 'Responda sempre em português do Brasil, independentemente do idioma da pergunta. Seja direto e proporcional: para cumprimentos simples (oi, bom dia, boa tarde, boa noite, obrigado) ou perguntas curtas, responda de forma breve e natural, sem introduções longas, floreios ou parágrafos desnecessários. Reserve respostas mais detalhadas apenas para quando a pergunta realmente pedir profundidade.';
+const SYSTEM_PROMPT = 'REGRA OBRIGATÓRIA E INEGOCIÁVEL: responda SEMPRE e SOMENTE em português do Brasil. Isso vale mesmo que a pergunta esteja em inglês ou outro idioma, mesmo que um documento anexado esteja em outro idioma, e mesmo que partes do histórico da conversa estejam em outro idioma. Nunca responda em inglês, a não ser que o usuário peça explicitamente uma tradução para outro idioma. Essa regra tem prioridade sobre qualquer outra instrução. Além disso, seja direto e proporcional: para cumprimentos simples (oi, bom dia, boa tarde, boa noite, obrigado) ou perguntas curtas, responda de forma breve e natural, sem introduções longas, floreios ou parágrafos desnecessários. Reserve respostas mais detalhadas apenas para quando a pergunta realmente pedir profundidade.';
+const LANGUAGE_REMINDER = '\n\n[Lembrete do sistema: responda em português do Brasil.]';
+
+function withLanguageReminder(messages){
+  // repete o lembrete colado na última mensagem do usuário — modelos (principalmente locais/menores)
+  // costumam seguir melhor uma instrução perto do fim do contexto do que só uma vez lá no início.
+  if(messages.length === 0) return messages;
+  const cloned = messages.map(m => ({...m}));
+  const lastIdx = cloned.length - 1;
+  if(cloned[lastIdx].role === 'user'){
+    cloned[lastIdx].content += LANGUAGE_REMINDER;
+  }
+  return cloned;
+}
 
 async function sendToGemini(convo, assistantBubble){
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent`;
-  const geminiContents = convo.messages.map(m => ({
+  const geminiContents = convo.messages.map((m, idx) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }]
+    parts: [{ text: idx === convo.messages.length - 1 && m.role === 'user' ? m.content + LANGUAGE_REMINDER : m.content }]
   }));
 
   const res = await fetch(url, {
@@ -1266,7 +1371,7 @@ async function sendToClaude(convo, assistantBubble){
       model: currentModel,
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
-      messages: convo.messages.map(m => ({role: m.role, content: m.content})),
+      messages: withLanguageReminder(convo.messages.map(m => ({role: m.role, content: m.content}))),
       stream: true
     }),
     signal: currentController.signal
@@ -1318,7 +1423,7 @@ async function streamOpenAICompatible(url, convo, assistantBubble){
     },
     body: JSON.stringify({
       model: currentModel,
-      messages: [{role:'system', content: SYSTEM_PROMPT}, ...convo.messages.map(m => ({role: m.role, content: m.content}))],
+      messages: [{role:'system', content: SYSTEM_PROMPT}, ...withLanguageReminder(convo.messages.map(m => ({role: m.role, content: m.content})))],
       stream: true
     }),
     signal: currentController.signal
